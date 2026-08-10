@@ -33,6 +33,7 @@ if (!SpeechRecognition) {
   // =====================================
 
   recognition.onstart = function () {
+    console.log("[3] LISTENING");
     if (!safetyMode && status) {
       status.innerText = "🎙️ Listening for 'Baby'...";
     }
@@ -44,7 +45,6 @@ if (!SpeechRecognition) {
 
   recognition.onresult = function (event) {
     let transcript = "";
-
     let isFinal = false;
 
     for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -54,43 +54,68 @@ if (!SpeechRecognition) {
       }
     }
 
-    transcript = transcript.toLowerCase().trim();
+    if (!transcript) return;
 
     if (heard) heard.innerText = "Heard: " + transcript;
 
-    // ------------------------------------
-    // Wait for final result before processing commands
-    // This prevents the same command from executing 
-    // multiple times during interim guesses.
-    // ------------------------------------
-    if (!isFinal) return;
+    const rawTranscript = transcript;
+    const command = rawTranscript
+      .toLowerCase()
+      .trim()
+      .replace(/[.,!?]/g, "");
+
+    console.log("[4] RAW TRANSCRIPT", rawTranscript);
 
     // =====================================
-    // ACTIVATE SAFETY MODE
-    // Say: "Baby"
+    // 1. ACTIVATE SAFETY MODE ("Baby")
     // =====================================
-
-    if (transcript.includes("baby") && !safetyMode) {
+    if ((command.includes("baby") || command === "baby") && !safetyMode) {
       safetyMode = true;
-      console.log("[WAKE] Baby detected");
-      console.log("[SAFETY] Safety mode ON");
+      console.log("[1] BABY DETECTED");
+      console.log("[2] SAFETY MODE ON");
       console.log("[VOICE] Listening for safety response");
 
       if (status) status.innerText = "🚨 SAFETY MODE ACTIVATED";
-
       document.body.style.backgroundColor = "#ffe5e5";
 
       speakText("I'm listening. Are you safe?");
+      return;
     }
 
-    const command = transcript.toLowerCase().trim();
+    // =====================================
+    // 2. UNSAFE COMMAND / NAHI DETECTION
+    // =====================================
+    const isUnsafeResponse =
+      command === "nahi" ||
+      command.includes("nahi") ||
+      command === "nahin" ||
+      command.includes("nahin") ||
+      command.includes("nahi hai") ||
+      command.includes("main safe nahi hoon") ||
+      command.includes("safe nahi") ||
+      command === "no" ||
+      command.includes("no") ||
+      command.includes("nope") ||
+      command.includes("i'm not safe") ||
+      command.includes("nhi");
+
+    if (safetyMode && !navigationTriggered && isUnsafeResponse) {
+      console.log("[5] NAHI DETECTED", command);
+      console.log("[SAFETY] UNSAFE RESPONSE DETECTED:", command);
+      handleUnsafeResponse();
+      return;
+    }
+
+    // ------------------------------------
+    // Wait for final result for non-emergency menu commands
+    // ------------------------------------
+    if (!isFinal) return;
+
     const isContactPage = window.location.pathname.endsWith("contact.html");
 
     // =====================================
     // HELP COMMAND
-    // Say: "HELP", "Help", "help me"
     // =====================================
-
     if (
       (command === "help" || command.includes("help me") || command.includes("help")) &&
       !isContactPage &&
@@ -98,29 +123,22 @@ if (!SpeechRecognition) {
     ) {
       window.helpTriggered = true;
       if (status) status.innerText = "🚨 HELP DETECTED - Opening emergency contacts...";
-
       speakText("Opening your emergency contacts.");
-
       window.open("contact.html", "_blank");
     }
 
     // =====================================
-    // GET LOCATION
-    // Say: "Location"
+    // GET LOCATION COMMAND
     // =====================================
-
     if (command.includes("location") && !window.locationTriggered) {
       window.locationTriggered = true;
       if (status) status.innerText = "📍 Getting your location...";
-
       getLocation();
     }
 
     // =====================================
     // BACK / HOME COMMAND
-    // Say: "BACK", "back", "go back", "home", "go home"
     // =====================================
-
     if (
       command === "back" ||
       command.includes("go back") ||
@@ -142,51 +160,20 @@ if (!SpeechRecognition) {
           }
           window.externalTab = null;
 
-          // Reset triggers so commands can be used again
           window.locationTriggered = false;
           navigationTriggered = false;
           window.helpTriggered = false;
           window.backTriggered = false;
 
-          // Return/open the VIRA START/HOME page in the original VIRA tab
           window.location.href = "safesakhi.html";
         }
       }
     }
 
-    console.log("[TEST] Raw transcript:", transcript);
-    const normalized = command;
-
     // =====================================
-    // UNSAFE COMMAND (SAFETY NAVIGATION)
+    // DEACTIVATE SAFETY MODE ("Safe")
     // =====================================
-
-    if (
-      (normalized === "no" || 
-       normalized.includes("no") || 
-       normalized.includes("nahi") || 
-       normalized.includes("nahin") || 
-       normalized.includes("i'm not safe")) && 
-      safetyMode && 
-      !navigationTriggered
-    ) {
-      console.log("[SAFETY] NO DETECTED");
-      navigationTriggered = true;
-      console.log("[VOICE] Heard: NO");
-      console.log("[SAFETY] Unsafe response detected");
-      
-      if (status) status.innerText = "🚨 Accessing location for nearest police station...";
-      speakText("Finding the nearest police station.");
-      
-      findSafeNavigation();
-    }
-
-    // =====================================
-    // DEACTIVATE SAFETY MODE
-    // Say: "Safe"
-    // =====================================
-
-    if (transcript.includes("safe")) {
+    if (command.includes("safe") && !isUnsafeResponse) {
       safetyMode = false;
       window.helpTriggered = false;
       window.locationTriggered = false;
@@ -195,26 +182,45 @@ if (!SpeechRecognition) {
       locationFound = false;
 
       if (status) status.innerText = "🎙️ Listening for 'Baby'...";
-
       document.body.style.backgroundColor = "#f5f5f5";
-
       if (heard) heard.innerText = "";
 
       window.speechSynthesis.cancel();
     }
   };
+
   // =====================================
-  // FIND SAFE NAVIGATION (AUTO-LOCATION)
+  // HANDLE UNSAFE RESPONSE
+  // =====================================
+
+  function handleUnsafeResponse() {
+    if (navigationTriggered) return;
+    navigationTriggered = true;
+
+    console.log("[SAFETY] Starting police station workflow");
+    if (status) status.innerText = "🚨 Accessing location for nearest police station...";
+
+    // Non-blocking voice notification
+    speakText("Finding the nearest police station.");
+
+    // Immediately trigger GPS & navigation workflow
+    findSafeNavigation();
+  }
+
+  // =====================================
+  // FIND SAFE NAVIGATION (GPS)
   // =====================================
 
   function findSafeNavigation() {
+    console.log("[6] GETTING LOCATION");
     if (!navigator.geolocation) {
+      console.error("[LOCATION ERROR] Location is not supported by this browser.");
       if (status) status.innerText = "❌ Location is not supported by this browser.";
       speakText("I need your location permission to find the nearest police station.");
       return;
     }
 
-    console.log("[LOCATION] Getting current GPS");
+    console.log("[LOCATION] Getting current location...");
 
     navigator.geolocation.getCurrentPosition(
       function (position) {
@@ -225,15 +231,16 @@ if (!SpeechRecognition) {
         currentLongitude = longitude;
         locationFound = true;
 
+        console.log("[7] LOCATION RECEIVED");
         console.log("[LOCATION] Latitude:", latitude);
         console.log("[LOCATION] Longitude:", longitude);
 
         findNearestPoliceStation(latitude, longitude);
       },
       function (error) {
-        window.policeTriggered = false; // Allow retry
+        navigationTriggered = false; // Allow retry on failure
         if (status) status.innerText = "❌ Unable to get your location.";
-        console.log("[LOCATION] Error:", error.message);
+        console.error("[LOCATION ERROR]", error);
         speakText("I need your location permission to find the nearest police station.");
       },
       {
@@ -245,15 +252,13 @@ if (!SpeechRecognition) {
   }
 
   // =====================================
-  // GET LOCATION
+  // GET LOCATION (Manual "Location" command)
   // =====================================
 
   function getLocation() {
     if (!navigator.geolocation) {
       if (status) status.innerText = "❌ Location is not supported by this browser.";
-
       speakText("Location is not supported by this browser.");
-
       return;
     }
 
@@ -262,23 +267,14 @@ if (!SpeechRecognition) {
     navigator.geolocation.getCurrentPosition(
       async function (position) {
         const latitude = position.coords.latitude;
-
         const longitude = position.coords.longitude;
 
-        // Save coordinates
-
         currentLatitude = latitude;
-
         currentLongitude = longitude;
 
         try {
-          // =====================================
-          // REVERSE GEOCODING
-          // GPS → ADDRESS
-          // =====================================
-
           const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&addressdetails=1`,
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&addressdetails=1`
           );
 
           if (!response.ok) {
@@ -286,67 +282,39 @@ if (!SpeechRecognition) {
           }
 
           const data = await response.json();
-
           const address = data.display_name;
-
-          // Location successfully found
 
           locationFound = true;
 
-          // =====================================
-          // SHOW LOCATION
-          // =====================================
-
           if (status) status.innerText = "📍 Location detected!";
-
           if (heard) heard.innerHTML = "📍 <strong>Your location:</strong><br>" + address;
-
-          // =====================================
-          // SPEAK LOCATION
-          // =====================================
 
           speakText("Your current location is " + address);
 
           console.log("Latitude:", latitude);
-
           console.log("Longitude:", longitude);
-
           console.log("Address:", address);
-
-          // =====================================
-          // OPEN EXTERNAL MAPS TAB
-          // =====================================
 
           const mapsURL = `https://www.google.com/maps?q=${latitude},${longitude}`;
           window.externalTab = window.open(mapsURL, "_blank");
         } catch (error) {
           locationFound = false;
-
           if (status) status.innerText = "❌ Could not find your address.";
-
           console.log("Address error:", error);
-
           speakText("I could not find your address.");
         }
       },
-
       function (error) {
         locationFound = false;
-
         if (status) status.innerText = "❌ Unable to get your location.";
-
         console.log("Location error:", error.message);
-
         speakText("I was unable to get your location.");
       },
-
       {
         enableHighAccuracy: true,
-
         timeout: 10000,
-
         maximumAge: 0,
-      },
+      }
     );
   }
 
@@ -355,190 +323,107 @@ if (!SpeechRecognition) {
   // =====================================
 
   async function findNearestPoliceStation(latitude, longitude) {
+    console.log("[8] SEARCHING POLICE STATIONS");
+    if (status) status.innerText = "👮 Finding nearest police station...";
+
+    let mapsUrl = "";
+
     try {
-      if (status) status.innerText = "👮 Finding nearest police station...";
-      console.log("[POLICE] Searching nearby police stations");
-
-      // Search within 5 km
-
       const radius = 5000;
-
-      // =====================================
-      // OVERPASS QUERY
-      // =====================================
-
       const query = `
-
-                [out:json];
-
-                (
-
-                    node["amenity"="police"]
-                    (around:${radius},${latitude},${longitude});
-
-                    way["amenity"="police"]
-                    (around:${radius},${latitude},${longitude});
-
-                    relation["amenity"="police"]
-                    (around:${radius},${latitude},${longitude});
-
-                );
-
-                out center;
-
-            `;
+        [out:json];
+        (
+          node["amenity"="police"](around:${radius},${latitude},${longitude});
+          way["amenity"="police"](around:${radius},${latitude},${longitude});
+          relation["amenity"="police"](around:${radius},${latitude},${longitude});
+        );
+        out center;
+      `;
 
       const response = await fetch(
         "https://overpass-api.de/api/interpreter",
-
         {
           method: "POST",
-
           body: query,
-        },
+        }
       );
 
       if (!response.ok) {
-        throw new Error("Police station search failed");
+        throw new Error("Police station search HTTP error: " + response.status);
       }
 
       const data = await response.json();
-      console.log("[POLICE] Results:", data.elements ? data.elements.length : 0);
-
-      // =====================================
-      // NO POLICE STATION
-      // =====================================
-
-      if (!data.elements || data.elements.length === 0) {
-        if (status) status.innerText = "❌ No nearby police station found.";
-
-        speakText("I couldn't find a nearby police station.");
-
-        return;
-      }
-
-      // =====================================
-      // FIND CLOSEST STATION
-      // =====================================
+      console.log("[POLICE] Search results:", data.elements ? data.elements.length : 0);
 
       let nearestStation = null;
-
       let shortestDistance = Infinity;
 
-      data.elements.forEach(function (station) {
-        let stationLat;
-        let stationLon;
+      if (data.elements && data.elements.length > 0) {
+        console.log("[9] POLICE STATION FOUND");
 
-        // Node
+        data.elements.forEach(function (station) {
+          let stationLat;
+          let stationLon;
 
-        if (station.type === "node") {
-          stationLat = station.lat;
+          if (station.type === "node") {
+            stationLat = station.lat;
+            stationLon = station.lon;
+          } else if (station.center) {
+            stationLat = station.center.lat;
+            stationLon = station.center.lon;
+          }
 
-          stationLon = station.lon;
-        }
+          if (stationLat === undefined || stationLon === undefined) return;
 
-        // Way / Relation
-        else if (station.center) {
-          stationLat = station.center.lat;
+          const distance = calculateDistance(latitude, longitude, stationLat, stationLon);
 
-          stationLon = station.center.lon;
-        }
+          if (distance < shortestDistance) {
+            shortestDistance = distance;
+            nearestStation = {
+              latitude: stationLat,
+              longitude: stationLon,
+              name: station.tags?.name || "Nearest Police Station",
+            };
+          }
+        });
+      }
 
-        // Ignore invalid locations
-
-        if (stationLat === undefined || stationLon === undefined) {
-          return;
-        }
-
-        // Calculate distance
-
-        const distance = calculateDistance(
-          latitude,
-          longitude,
-
-          stationLat,
-          stationLon,
-        );
-
-        // Check nearest
-
-        if (distance < shortestDistance) {
-          shortestDistance = distance;
-
-          nearestStation = {
-            lat: stationLat,
-            lon: stationLon,
-            name: station.tags?.name || "Nearest Police Station",
-          };
-        }
-      });
-      
       if (nearestStation) {
-        console.log("[POLICE] Selected station:", nearestStation);
-      }
+        console.log("[10] NEAREST POLICE STATION SELECTED", nearestStation);
 
-      // =====================================
-      // CHECK RESULT
-      // =====================================
+        let distanceText = shortestDistance < 1
+          ? Math.round(shortestDistance * 1000) + " meters"
+          : shortestDistance.toFixed(2) + " kilometers";
 
-      if (!nearestStation) {
-        if (status) status.innerText = "❌ Could not identify the nearest police station.";
+        if (status) status.innerText = "👮 Nearest Police Station Found";
+        if (heard) {
+          heard.innerHTML +=
+            "<br><br>" +
+            "🚨 <strong>Nearest Police Station:</strong><br>" +
+            "👮 " + nearestStation.name + "<br>" +
+            "📏 " + distanceText;
+        }
 
-        speakText("I couldn't find a nearby police station.");
-
-        return;
-      }
-
-      // =====================================
-      // DISTANCE
-      // =====================================
-
-      let distanceText;
-
-      if (shortestDistance < 1) {
-        distanceText = Math.round(shortestDistance * 1000) + " meters";
+        mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${nearestStation.latitude},${nearestStation.longitude}`;
       } else {
-        distanceText = shortestDistance.toFixed(2) + " kilometers";
+        console.log("[POLICE] No specific station found via API, falling back to Google Maps search");
+        mapsUrl = `https://www.google.com/maps/search/police+station/@${latitude},${longitude},14z`;
       }
-
-      // =====================================
-      // SHOW POLICE STATION
-      // =====================================
-
-      if (status) status.innerText = "👮 Nearest Police Station Found";
-
-      if (heard) {
-        heard.innerHTML +=
-          "<br><br>" +
-          "🚨 <strong>Nearest Police Station:</strong><br>" +
-          "👮 " +
-          nearestStation.name +
-          "<br>" +
-          "📏 " +
-          distanceText;
-      }
-
-      // =====================================
-      // CREATE NAVIGATION URL
-      // =====================================
-
-      const mapsURL = `https://www.google.com/maps/dir/?api=1&destination=${nearestStation.lat},${nearestStation.lon}`;
-
-      console.log("[NAVIGATION] URL:", mapsURL);
-
-      // =====================================
-      // SPEAK STATION + NAVIGATION
-      // =====================================
-
-      speakText("Opening directions to the nearest police station.");
-      
-      console.log("[NAVIGATION] ABOUT TO OPEN NEW TAB");
-      
-      // Open navigation in a NEW tab, keep VIRA running in the original tab
-      window.externalTab = window.open(mapsURL, "_blank");
-
     } catch (error) {
-      console.log("Police station error:", error);
+      console.error("[POLICE ERROR]", error);
+      mapsUrl = `https://www.google.com/maps/search/police+station/@${latitude},${longitude},14z`;
+    }
+
+    console.log("[11] GOOGLE MAPS URL CREATED");
+    console.log("[NAVIGATION] Google Maps URL:", mapsUrl);
+
+    console.log("[12] OPENING GOOGLE MAPS");
+
+    // Open Google Maps
+    const newTab = window.open(mapsUrl, "_blank");
+    if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
+      console.log("[NAVIGATION] Popup blocked, using window.location.assign");
+      window.location.assign(mapsUrl);
     }
   }
 
@@ -548,26 +433,15 @@ if (!SpeechRecognition) {
 
   function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
-
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
-
     const dLon = ((lon2 - lon1) * Math.PI) / 180;
-
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos((lat1 * Math.PI) / 180) *
         Math.cos((lat2 * Math.PI) / 180) *
         Math.sin(dLon / 2) *
         Math.sin(dLon / 2);
-
-    const c =
-      2 *
-      Math.atan2(
-        Math.sqrt(a),
-
-        Math.sqrt(1 - a),
-      );
-
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
 
@@ -575,46 +449,30 @@ if (!SpeechRecognition) {
   // TEXT TO SPEECH — RIME API + FALLBACK
   // =====================================
 
-  // Track currently playing audio for interrupt support
   let currentAudio = null;
-  let ttsRequestId = 0; // Track requests to prevent async race conditions
-
-  // ------------------------------------
-  // FALLBACK: Browser SpeechSynthesis
-  // ------------------------------------
+  let ttsRequestId = 0;
 
   function speakTextFallback(text) {
     const speech = new SpeechSynthesisUtterance();
-
     speech.text = text;
-
     speech.lang = "en-IN";
-
     speech.rate = 0.9;
-
     speech.pitch = 1;
 
     window.speechSynthesis.cancel();
-
     window.speechSynthesis.speak(speech);
   }
-
-  // ------------------------------------
-  // RIME: High-quality AI voice
-  // ------------------------------------
 
   async function speakWithRime(text) {
     ttsRequestId++;
     const currentRequestId = ttsRequestId;
 
-    // Stop any currently playing audio
     if (currentAudio) {
       currentAudio.pause();
       currentAudio.currentTime = 0;
       currentAudio = null;
     }
 
-    // Also cancel any browser speech that might be playing
     window.speechSynthesis.cancel();
 
     try {
@@ -639,7 +497,6 @@ if (!SpeechRecognition) {
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
 
-      // Prevent duplicate audio if a newer TTS request was started while waiting for the network
       if (currentRequestId !== ttsRequestId) {
         URL.revokeObjectURL(audioUrl);
         return;
@@ -647,7 +504,6 @@ if (!SpeechRecognition) {
 
       currentAudio = audio;
 
-      // Clean up object URL after playback
       audio.onended = function () {
         URL.revokeObjectURL(audioUrl);
         if (currentAudio === audio) {
@@ -671,27 +527,20 @@ if (!SpeechRecognition) {
     }
   }
 
-  // ------------------------------------
-  // MAIN: speakText (same signature)
-  // ------------------------------------
-
   function speakText(text) {
     speakWithRime(text);
   }
 
   // =====================================
-  // SPEECH ERROR
+  // SPEECH ERROR & AUTO-RESTART
   // =====================================
 
   recognition.onerror = function (event) {
     console.log("Speech recognition error:", event.error);
   };
 
-  // =====================================
-  // KEEP LISTENING
-  // =====================================
-
   recognition.onend = function () {
+    console.log("[3] LISTENING");
     try {
       recognition.start();
     } catch (error) {
