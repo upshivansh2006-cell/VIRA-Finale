@@ -35,7 +35,7 @@ if (!SpeechRecognition) {
   recognition.onstart = function () {
     console.log("[3] LISTENING");
     if (!safetyMode && status) {
-      status.innerText = "🎙️ Listening for 'Code Word'...";
+      status.innerText = "🎙️ Listening for 'Baby'...";
     }
   };
 
@@ -180,7 +180,7 @@ if (!SpeechRecognition) {
     }
 
     // =====================================
-    // BACK / HOME COMMAND
+    // BACK / HOME COMMAND INSIDE CONTACT PAGE & MAIN PAGE
     // =====================================
     if (
       command === "back" ||
@@ -193,20 +193,32 @@ if (!SpeechRecognition) {
         console.log("[COMMAND] Back/Home detected");
 
         if (isContactPage) {
-          speakText("Going back to Safe Sakhi.");
+          console.log("[CONTACT] Back command detected");
+          speakText("Returning to Safe Sakhi.");
+
+          // Reset safety mode & session flags completely
+          safetyMode = false;
+          window.helpTriggered = false;
+          window.locationTriggered = false;
+          navigationTriggered = false;
+          window.backTriggered = false;
+          locationFound = false;
+
           setTimeout(function () {
             window.location.href = "safesakhi.html";
-          }, 1000);
+          }, 800);
         } else {
           if (window.externalTab && !window.externalTab.closed) {
-            window.externalTab.close();
+            try { window.externalTab.close(); } catch (e) {}
           }
           window.externalTab = null;
 
+          safetyMode = false;
           window.locationTriggered = false;
           navigationTriggered = false;
           window.helpTriggered = false;
           window.backTriggered = false;
+          locationFound = false;
 
           window.location.href = "safesakhi.html";
         }
