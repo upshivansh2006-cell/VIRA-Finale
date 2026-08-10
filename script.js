@@ -20,7 +20,7 @@ let navigationTriggered = false;
 // =====================================
 
 if (!SpeechRecognition) {
-  status.innerText = "❌ Speech recognition is not supported.";
+  if (status) status.innerText = "❌ Speech recognition is not supported.";
 } else {
   const recognition = new SpeechRecognition();
 
@@ -33,7 +33,7 @@ if (!SpeechRecognition) {
   // =====================================
 
   recognition.onstart = function () {
-    if (!safetyMode) {
+    if (!safetyMode && status) {
       status.innerText = "🎙️ Listening for 'Baby'...";
     }
   };
@@ -56,7 +56,7 @@ if (!SpeechRecognition) {
 
     transcript = transcript.toLowerCase().trim();
 
-    heard.innerText = "Heard: " + transcript;
+    if (heard) heard.innerText = "Heard: " + transcript;
 
     // ------------------------------------
     // Wait for final result before processing commands
@@ -76,41 +76,86 @@ if (!SpeechRecognition) {
       console.log("[SAFETY] Safety mode ON");
       console.log("[VOICE] Listening for safety response");
 
-      status.innerText = "🚨 SAFETY MODE ACTIVATED";
+      if (status) status.innerText = "🚨 SAFETY MODE ACTIVATED";
 
       document.body.style.backgroundColor = "#ffe5e5";
 
       speakText("I'm listening. Are you safe?");
     }
+
+    const command = transcript.toLowerCase().trim();
+    const isContactPage = window.location.pathname.endsWith("contact.html");
+
     // =====================================
     // HELP COMMAND
-    // Say: "Help"
+    // Say: "HELP", "Help", "help me"
     // =====================================
 
-    if (transcript.includes("help") && safetyMode && !window.helpTriggered) {
+    if (
+      (command === "help" || command.includes("help me") || command.includes("help")) &&
+      !isContactPage &&
+      !window.helpTriggered
+    ) {
       window.helpTriggered = true;
-      status.innerText = "🚨 HELP DETECTED - Opening emergency contacts...";
+      if (status) status.innerText = "🚨 HELP DETECTED - Opening emergency contacts...";
 
-      speakText("Help detected. Opening your emergency contacts.");
+      speakText("Opening your emergency contacts.");
 
-      setTimeout(function () {
-        window.location.href = "contact.html";
-      }, 1000);
+      window.open("contact.html", "_blank");
     }
+
     // =====================================
     // GET LOCATION
     // Say: "Location"
     // =====================================
 
-    if (transcript.includes("location") && safetyMode && !window.locationTriggered) {
+    if (command.includes("location") && !window.locationTriggered) {
       window.locationTriggered = true;
-      status.innerText = "📍 Getting your location...";
+      if (status) status.innerText = "📍 Getting your location...";
 
       getLocation();
     }
 
+    // =====================================
+    // BACK / HOME COMMAND
+    // Say: "BACK", "back", "go back", "home", "go home"
+    // =====================================
+
+    if (
+      command === "back" ||
+      command.includes("go back") ||
+      command.includes("go home") ||
+      command === "home"
+    ) {
+      if (!window.backTriggered) {
+        window.backTriggered = true;
+        console.log("[COMMAND] Back/Home detected");
+
+        if (isContactPage) {
+          speakText("Going back to Safe Sakhi.");
+          setTimeout(function () {
+            window.location.href = "safesakhi.html";
+          }, 1000);
+        } else {
+          if (window.externalTab && !window.externalTab.closed) {
+            window.externalTab.close();
+          }
+          window.externalTab = null;
+
+          // Reset triggers so commands can be used again
+          window.locationTriggered = false;
+          navigationTriggered = false;
+          window.helpTriggered = false;
+          window.backTriggered = false;
+
+          // Return/open the VIRA START/HOME page in the original VIRA tab
+          window.location.href = "safesakhi.html";
+        }
+      }
+    }
+
     console.log("[TEST] Raw transcript:", transcript);
-    const normalized = transcript.toLowerCase().trim();
+    const normalized = command;
 
     // =====================================
     // UNSAFE COMMAND (SAFETY NAVIGATION)
@@ -130,7 +175,7 @@ if (!SpeechRecognition) {
       console.log("[VOICE] Heard: NO");
       console.log("[SAFETY] Unsafe response detected");
       
-      status.innerText = "🚨 Accessing location for nearest police station...";
+      if (status) status.innerText = "🚨 Accessing location for nearest police station...";
       speakText("Finding the nearest police station.");
       
       findSafeNavigation();
@@ -146,13 +191,14 @@ if (!SpeechRecognition) {
       window.helpTriggered = false;
       window.locationTriggered = false;
       navigationTriggered = false;
+      window.backTriggered = false;
       locationFound = false;
 
-      status.innerText = "🎙️ Listening for 'Baby'...";
+      if (status) status.innerText = "🎙️ Listening for 'Baby'...";
 
       document.body.style.backgroundColor = "#f5f5f5";
 
-      heard.innerText = "";
+      if (heard) heard.innerText = "";
 
       window.speechSynthesis.cancel();
     }
@@ -163,7 +209,7 @@ if (!SpeechRecognition) {
 
   function findSafeNavigation() {
     if (!navigator.geolocation) {
-      status.innerText = "❌ Location is not supported by this browser.";
+      if (status) status.innerText = "❌ Location is not supported by this browser.";
       speakText("I need your location permission to find the nearest police station.");
       return;
     }
@@ -186,7 +232,7 @@ if (!SpeechRecognition) {
       },
       function (error) {
         window.policeTriggered = false; // Allow retry
-        status.innerText = "❌ Unable to get your location.";
+        if (status) status.innerText = "❌ Unable to get your location.";
         console.log("[LOCATION] Error:", error.message);
         speakText("I need your location permission to find the nearest police station.");
       },
@@ -204,14 +250,14 @@ if (!SpeechRecognition) {
 
   function getLocation() {
     if (!navigator.geolocation) {
-      status.innerText = "❌ Location is not supported by this browser.";
+      if (status) status.innerText = "❌ Location is not supported by this browser.";
 
       speakText("Location is not supported by this browser.");
 
       return;
     }
 
-    status.innerText = "📍 Getting your exact location...";
+    if (status) status.innerText = "📍 Getting your exact location...";
 
     navigator.geolocation.getCurrentPosition(
       async function (position) {
@@ -251,9 +297,9 @@ if (!SpeechRecognition) {
           // SHOW LOCATION
           // =====================================
 
-          status.innerText = "📍 Location detected!";
+          if (status) status.innerText = "📍 Location detected!";
 
-          heard.innerHTML = "📍 <strong>Your location:</strong><br>" + address;
+          if (heard) heard.innerHTML = "📍 <strong>Your location:</strong><br>" + address;
 
           // =====================================
           // SPEAK LOCATION
@@ -266,10 +312,17 @@ if (!SpeechRecognition) {
           console.log("Longitude:", longitude);
 
           console.log("Address:", address);
+
+          // =====================================
+          // OPEN EXTERNAL MAPS TAB
+          // =====================================
+
+          const mapsURL = `https://www.google.com/maps?q=${latitude},${longitude}`;
+          window.externalTab = window.open(mapsURL, "_blank");
         } catch (error) {
           locationFound = false;
 
-          status.innerText = "❌ Could not find your address.";
+          if (status) status.innerText = "❌ Could not find your address.";
 
           console.log("Address error:", error);
 
@@ -280,7 +333,7 @@ if (!SpeechRecognition) {
       function (error) {
         locationFound = false;
 
-        status.innerText = "❌ Unable to get your location.";
+        if (status) status.innerText = "❌ Unable to get your location.";
 
         console.log("Location error:", error.message);
 
@@ -303,7 +356,7 @@ if (!SpeechRecognition) {
 
   async function findNearestPoliceStation(latitude, longitude) {
     try {
-      status.innerText = "👮 Finding nearest police station...";
+      if (status) status.innerText = "👮 Finding nearest police station...";
       console.log("[POLICE] Searching nearby police stations");
 
       // Search within 5 km
@@ -357,7 +410,7 @@ if (!SpeechRecognition) {
       // =====================================
 
       if (!data.elements || data.elements.length === 0) {
-        status.innerText = "❌ No nearby police station found.";
+        if (status) status.innerText = "❌ No nearby police station found.";
 
         speakText("I couldn't find a nearby police station.");
 
@@ -429,7 +482,7 @@ if (!SpeechRecognition) {
       // =====================================
 
       if (!nearestStation) {
-        status.innerText = "❌ Could not identify the nearest police station.";
+        if (status) status.innerText = "❌ Could not identify the nearest police station.";
 
         speakText("I couldn't find a nearby police station.");
 
@@ -452,16 +505,18 @@ if (!SpeechRecognition) {
       // SHOW POLICE STATION
       // =====================================
 
-      status.innerText = "👮 Nearest Police Station Found";
+      if (status) status.innerText = "👮 Nearest Police Station Found";
 
-      heard.innerHTML +=
-        "<br><br>" +
-        "🚨 <strong>Nearest Police Station:</strong><br>" +
-        "👮 " +
-        nearestStation.name +
-        "<br>" +
-        "📏 " +
-        distanceText;
+      if (heard) {
+        heard.innerHTML +=
+          "<br><br>" +
+          "🚨 <strong>Nearest Police Station:</strong><br>" +
+          "👮 " +
+          nearestStation.name +
+          "<br>" +
+          "📏 " +
+          distanceText;
+      }
 
       // =====================================
       // CREATE NAVIGATION URL
@@ -477,11 +532,10 @@ if (!SpeechRecognition) {
 
       speakText("Opening directions to the nearest police station.");
       
-      console.log("[NAVIGATION] ABOUT TO REDIRECT");
+      console.log("[NAVIGATION] ABOUT TO OPEN NEW TAB");
       
-      // Auto-open navigation without asking
-      // window.location.assign prevents popup blockers from stopping navigation
-      window.location.assign(mapsURL);
+      // Open navigation in a NEW tab, keep VIRA running in the original tab
+      window.externalTab = window.open(mapsURL, "_blank");
 
     } catch (error) {
       console.log("Police station error:", error);
