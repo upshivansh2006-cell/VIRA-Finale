@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Safe Sakhi - Location</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>📍 Your Location</h1>
+        <p id="status">Getting your location...</p>
+        <p id="heard"></p>
+        <br>
+        <a style="display: inline-block; padding: 12px 25px; background: #d32f2f; color: white; text-decoration: none; border-radius: 10px;" href="safesakhi.html">← Back to Home</a>
+    </div>
+    <script src="script.js"></script>
+    <script>
+        // Automatically fetch location when page opens
+        window.onload = function() {
+            setTimeout(() => {
+                if (typeof getLocation === 'function') {
+                    getLocation();
+                }
+            }, 500);
+        };
+    </script>
+</body>
+</html>
