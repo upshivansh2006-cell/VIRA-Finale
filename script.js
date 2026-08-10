@@ -106,8 +106,50 @@ if (!SpeechRecognition) {
       return;
     }
 
+    // =====================================
+    // 3. SAFE COMMAND
+    // Say: "safe", "I am safe", "main safe hoon", "ab safe hoon"
+    // =====================================
+    const isSafe =
+      (command === "safe" ||
+       command.includes("i am safe") ||
+       command.includes("main safe hoon") ||
+       command.includes("ab safe hoon")) &&
+      !isUnsafeResponse;
+
+    if (isSafe) {
+      console.log("[SAFETY] SAFE DETECTED");
+
+      safetyMode = false;
+      window.helpTriggered = false;
+      window.locationTriggered = false;
+      navigationTriggered = false;
+      window.backTriggered = false;
+      locationFound = false;
+
+      // Close external tab if opened
+      if (window.externalTab && !window.externalTab.closed) {
+        try {
+          window.externalTab.close();
+        } catch (e) {}
+      }
+      window.externalTab = null;
+
+      speakText("Okay, going back to Safe Sakhi.");
+
+      if (status) status.innerText = "🎙️ Listening for 'Baby'...";
+      document.body.style.backgroundColor = "#f5f5f5";
+      if (heard) heard.innerText = "";
+
+      setTimeout(function () {
+        window.location.href = "safesakhi.html";
+      }, 500);
+
+      return;
+    }
+
     // ------------------------------------
-    // Wait for final result for non-emergency menu commands
+    // Wait for final result for menu commands
     // ------------------------------------
     if (!isFinal) return;
 
@@ -168,24 +210,6 @@ if (!SpeechRecognition) {
           window.location.href = "safesakhi.html";
         }
       }
-    }
-
-    // =====================================
-    // DEACTIVATE SAFETY MODE ("Safe")
-    // =====================================
-    if (command.includes("safe") && !isUnsafeResponse) {
-      safetyMode = false;
-      window.helpTriggered = false;
-      window.locationTriggered = false;
-      navigationTriggered = false;
-      window.backTriggered = false;
-      locationFound = false;
-
-      if (status) status.innerText = "🎙️ Listening for 'Baby'...";
-      document.body.style.backgroundColor = "#f5f5f5";
-      if (heard) heard.innerText = "";
-
-      window.speechSynthesis.cancel();
     }
   };
 
