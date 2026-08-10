@@ -35,7 +35,7 @@ if (!SpeechRecognition) {
   recognition.onstart = function () {
     console.log("[3] LISTENING");
     if (!safetyMode && status) {
-      status.innerText = "🎙️ Listening for 'Baby'...";
+      status.innerText = "🎙️ Listening for 'Code Word'...";
     }
   };
 
@@ -71,14 +71,16 @@ if (!SpeechRecognition) {
     // =====================================
     if ((command.includes("baby") || command === "baby") && !safetyMode) {
       safetyMode = true;
+      window.helpTriggered = false; // Reset help guard for new session
       console.log("[1] BABY DETECTED");
       console.log("[2] SAFETY MODE ON");
+      console.log("[SAFETY] Safety Mode ON");
       console.log("[VOICE] Listening for safety response");
 
       if (status) status.innerText = "🚨 SAFETY MODE ACTIVATED";
       document.body.style.backgroundColor = "#ffe5e5";
 
-      speakText("I'm listening. Are you safe?");
+      speakText("Safety mode is on. I'm listening.");
       return;
     }
 
@@ -112,9 +114,9 @@ if (!SpeechRecognition) {
     // =====================================
     const isSafe =
       (command === "safe" ||
-       command.includes("i am safe") ||
-       command.includes("main safe hoon") ||
-       command.includes("ab safe hoon")) &&
+        command.includes("i am safe") ||
+        command.includes("main safe hoon") ||
+        command.includes("ab safe hoon")) &&
       !isUnsafeResponse;
 
     if (isSafe) {
@@ -131,7 +133,7 @@ if (!SpeechRecognition) {
       if (window.externalTab && !window.externalTab.closed) {
         try {
           window.externalTab.close();
-        } catch (e) {}
+        } catch (e) { }
       }
       window.externalTab = null;
 
@@ -148,26 +150,25 @@ if (!SpeechRecognition) {
       return;
     }
 
-    // ------------------------------------
-    // Wait for final result for menu commands
-    // ------------------------------------
-    if (!isFinal) return;
-
     const isContactPage = window.location.pathname.endsWith("contact.html");
 
     // =====================================
-    // HELP COMMAND
+    // 4. HELP COMMAND (STRICTLY REQUIRES SAFETY MODE ON)
     // =====================================
-    if (
-      (command === "help" || command.includes("help me") || command.includes("help")) &&
-      !isContactPage &&
-      !window.helpTriggered
-    ) {
-      window.helpTriggered = true;
-      if (status) status.innerText = "🚨 HELP DETECTED - Opening emergency contacts...";
-      speakText("Opening your emergency contacts.");
-      window.open("contact.html", "_blank");
+    if (command === "help" || command.includes("help me") || command === "help me") {
+      if (!safetyMode) {
+        console.log("[HELP] Ignored because Safety Mode is OFF");
+        return;
+      } else if (!isContactPage && !window.helpTriggered) {
+        openContactPage();
+        return;
+      }
     }
+
+    // ------------------------------------
+    // Wait for final result for other menu commands
+    // ------------------------------------
+    if (!isFinal) return;
 
     // =====================================
     // GET LOCATION COMMAND
@@ -212,6 +213,22 @@ if (!SpeechRecognition) {
       }
     }
   };
+
+  // =====================================
+  // OPEN CONTACT PAGE
+  // =====================================
+
+  function openContactPage() {
+    if (window.helpTriggered) return;
+    window.helpTriggered = true;
+
+    console.log("[HELP] Opening contact.html");
+    if (status) status.innerText = "🚨 HELP DETECTED - Opening emergency contacts...";
+
+    speakText("Opening your emergency contacts.");
+
+    window.open("contact.html", "_blank");
+  }
 
   // =====================================
   // HANDLE UNSAFE RESPONSE
@@ -462,9 +479,9 @@ if (!SpeechRecognition) {
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
