@@ -14,6 +14,8 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 
 logger = logging.getLogger("vira.qdrant")
 
+QDRANT_URL = os.getenv("QDRANT_URL", "")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 QDRANT_PATH = os.getenv("QDRANT_PATH", "local_qdrant_db")
 
 COLLECTION_NAME = "emergency_protocols"
@@ -22,6 +24,12 @@ VECTOR_SIZE = 1536  # Dimensions for OpenAI text-embedding-3-small
 
 def _create_client() -> QdrantClient:
     """Create a Qdrant client instance."""
+    if QDRANT_URL:
+        print("Initiating Qdrant Cloud")
+        return QdrantClient(
+            url=QDRANT_URL,
+            api_key=QDRANT_API_KEY,
+        )
     return QdrantClient(
         path=QDRANT_PATH,
     )
