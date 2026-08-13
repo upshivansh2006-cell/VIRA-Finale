@@ -1,609 +1,516 @@
-const status = document.getElementById("status");
-const heard = document.getElementById("heard");
-
-const SpeechRecognition =
-  window.SpeechRecognition || window.webkitSpeechRecognition;
-
 // =====================================
-// GLOBAL VARIABLES
+// VIRA — Unified Frontend Script
 // =====================================
 
-let currentLatitude = null;
-let currentLongitude = null;
-
-let safetyMode = false;
-let locationFound = false;
-let navigationTriggered = false;
+const UI = {
+  status: document.getElementById("status"),
+  heard: document.getElementById("heard")
+};
 
 // =====================================
-// SPEECH RECOGNITION SUPPORT
+// STATE MANAGEMENT
 // =====================================
-
-if (!SpeechRecognition) {
-  if (status) status.innerText = "❌ Speech recognition is not supported.";
-} else {
-  const recognition = new SpeechRecognition();
-
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = "en-IN";
-
-  // =====================================
-  // START LISTENING
-  // =====================================
-
-  recognition.onstart = function () {
-    console.log("[3] LISTENING");
-    if (!safetyMode && status) {
-      status.innerText = "🎙️ Listening for 'Baby'...";
-    }
-  };
-
-  // =====================================
-  // VOICE RESULT
-  // =====================================
-
-  recognition.onresult = function (event) {
-    let transcript = "";
-    let isFinal = false;
-
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      transcript += event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        isFinal = true;
-      }
-    }
-
-    if (!transcript) return;
-
-    if (heard) heard.innerText = "Heard: " + transcript;
-
-    const rawTranscript = transcript;
-    const command = rawTranscript
-      .toLowerCase()
-      .trim()
-      .replace(/[.,!?]/g, "");
-
-    console.log("[4] RAW TRANSCRIPT", rawTranscript);
-
-    // =====================================
-    // 1. ACTIVATE SAFETY MODE ("Baby")
-    // =====================================
-    if ((command.includes("baby") || command === "baby") && !safetyMode) {
-      safetyMode = true;
-      window.helpTriggered = false; // Reset help guard for new session
-      console.log("[1] BABY DETECTED");
-      console.log("[2] SAFETY MODE ON");
-      console.log("[SAFETY] Safety Mode ON");
-      console.log("[VOICE] Listening for safety response");
-
-      if (status) status.innerText = "🚨 SAFETY MODE ACTIVATED";
-      document.body.style.backgroundColor = "#ffe5e5";
-
-      speakText("Safety mode is on. I'm listening.");
-      return;
-    }
-
-    // =====================================
-    // 2. UNSAFE COMMAND / NAHI DETECTION
-    // =====================================
-    const isUnsafeResponse =
-      command === "nahi" ||
-      command.includes("nahi") ||
-      command === "nahin" ||
-      command.includes("nahin") ||
-      command.includes("nahi hai") ||
-      command.includes("main safe nahi hoon") ||
-      command.includes("safe nahi") ||
-      command === "no" ||
-      command.includes("no") ||
-      command.includes("nope") ||
-      command.includes("i'm not safe") ||
-      command.includes("nhi");
-
-    if (safetyMode && !navigationTriggered && isUnsafeResponse) {
-      console.log("[5] NAHI DETECTED", command);
-      console.log("[SAFETY] UNSAFE RESPONSE DETECTED:", command);
-      handleUnsafeResponse();
-      return;
-    }
-
-    // =====================================
-    // 3. SAFE COMMAND
-    // Say: "safe", "I am safe", "main safe hoon", "ab safe hoon"
-    // =====================================
-    const isSafe =
-      (command === "safe" ||
-        command.includes("i am safe") ||
-        command.includes("main safe hoon") ||
-        command.includes("ab safe hoon")) &&
-      !isUnsafeResponse;
-
-    if (isSafe) {
-      console.log("[SAFETY] SAFE DETECTED");
-
-      safetyMode = false;
-      window.helpTriggered = false;
-      window.locationTriggered = false;
-      navigationTriggered = false;
-      window.backTriggered = false;
-      locationFound = false;
-
-      // Close external tab if opened
-      if (window.externalTab && !window.externalTab.closed) {
-        try {
-          window.externalTab.close();
-        } catch (e) { }
-      }
-      window.externalTab = null;
-
-      speakText("Okay, going back to Safe Sakhi.");
-
-      if (status) status.innerText = "🎙️ Listening for 'Baby'...";
-      document.body.style.backgroundColor = "#f5f5f5";
-      if (heard) heard.innerText = "";
-
-      setTimeout(function () {
-        window.location.href = "safesakhi.html";
-      }, 500);
-
-      return;
-    }
-
-    const isContactPage = window.location.pathname.endsWith("contact.html");
-
-    // =====================================
-    // 4. HELP COMMAND (STRICTLY REQUIRES SAFETY MODE ON)
-    // =====================================
-    if (command === "help" || command.includes("help me") || command === "help me") {
-      if (!safetyMode) {
-        console.log("[HELP] Ignored because Safety Mode is OFF");
-        return;
-      } else if (!isContactPage && !window.helpTriggered) {
-        openContactPage();
-        return;
-      }
-    }
-
-    // ------------------------------------
-    // Wait for final result for other menu commands
-    // ------------------------------------
-    if (!isFinal) return;
-
-    // =====================================
-    // GET LOCATION COMMAND
-    // =====================================
-    if (command.includes("location") && !window.locationTriggered) {
-      window.locationTriggered = true;
-      if (status) status.innerText = "📍 Getting your location...";
-      getLocation();
-    }
-
-    // =====================================
-    // BACK / HOME COMMAND INSIDE CONTACT PAGE & MAIN PAGE
-    // =====================================
-    if (
-      command === "back" ||
-      command.includes("go back") ||
-      command.includes("go home") ||
-      command === "home"
-    ) {
-      if (!window.backTriggered) {
-        window.backTriggered = true;
-        console.log("[COMMAND] Back/Home detected");
-
-        if (isContactPage) {
-          console.log("[CONTACT] Back command detected");
-          speakText("Returning to Safe Sakhi.");
-
-          // Reset safety mode & session flags completely
-          safetyMode = false;
-          window.helpTriggered = false;
-          window.locationTriggered = false;
-          navigationTriggered = false;
-          window.backTriggered = false;
-          locationFound = false;
-
-          setTimeout(function () {
-            window.location.href = "safesakhi.html";
-          }, 800);
-        } else {
-          if (window.externalTab && !window.externalTab.closed) {
-            try { window.externalTab.close(); } catch (e) {}
-          }
-          window.externalTab = null;
-
-          safetyMode = false;
-          window.locationTriggered = false;
-          navigationTriggered = false;
-          window.helpTriggered = false;
-          window.backTriggered = false;
-          locationFound = false;
-
-          window.location.href = "safesakhi.html";
-        }
-      }
-    }
-  };
-
-  // =====================================
-  // OPEN CONTACT PAGE
-  // =====================================
-
-  function openContactPage() {
-    if (window.helpTriggered) return;
-    window.helpTriggered = true;
-
-    console.log("[HELP] Opening contact.html");
-    if (status) status.innerText = "🚨 HELP DETECTED - Opening emergency contacts...";
-
-    speakText("Opening your emergency contacts.");
-
-    window.open("contact.html", "_blank");
+const AppState = {
+  safetyMode: false,
+  location: { lat: null, lng: null },
+  isProcessing: false,   // Prevents double-firing the assist pipeline
+  activeWorkflows: {
+    help: false,
+    navigation: false,
+    location: false,
+    doctor: false,
+    back: false
+  },
+  resetWorkflows() {
+    this.activeWorkflows.help = false;
+    this.activeWorkflows.navigation = false;
+    this.activeWorkflows.location = false;
+    this.activeWorkflows.doctor = false;
+    this.activeWorkflows.back = false;
   }
+};
 
-  // =====================================
-  // HANDLE UNSAFE RESPONSE
-  // =====================================
+// =====================================
+// TEXT-TO-SPEECH (TTS) SYSTEM
+// =====================================
+const TTS = {
+  currentAudio: null,
+  requestId: 0,
 
-  function handleUnsafeResponse() {
-    if (navigationTriggered) return;
-    navigationTriggered = true;
+  fallback(text) {
+    return new Promise((resolve) => {
+      const speech = new SpeechSynthesisUtterance(text);
+      speech.lang = "en-IN";
+      speech.rate = 0.9;
+      speech.onend = resolve;
+      speech.onerror = resolve;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(speech);
+    });
+  },
 
-    console.log("[SAFETY] Starting police station workflow");
-    if (status) status.innerText = "🚨 Accessing location for nearest police station...";
+  async speak(text) {
+    this.requestId++;
+    const reqId = this.requestId;
 
-    // Non-blocking voice notification
-    speakText("Finding the nearest police station.");
-
-    // Immediately trigger GPS & navigation workflow
-    findSafeNavigation();
-  }
-
-  // =====================================
-  // FIND SAFE NAVIGATION (GPS)
-  // =====================================
-
-  function findSafeNavigation() {
-    console.log("[6] GETTING LOCATION");
-    if (!navigator.geolocation) {
-      console.error("[LOCATION ERROR] Location is not supported by this browser.");
-      if (status) status.innerText = "❌ Location is not supported by this browser.";
-      speakText("I need your location permission to find the nearest police station.");
-      return;
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio.currentTime = 0;
+      this.currentAudio = null;
     }
-
-    console.log("[LOCATION] Getting current location...");
-
-    navigator.geolocation.getCurrentPosition(
-      function (position) {
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-
-        currentLatitude = latitude;
-        currentLongitude = longitude;
-        locationFound = true;
-
-        console.log("[7] LOCATION RECEIVED");
-        console.log("[LOCATION] Latitude:", latitude);
-        console.log("[LOCATION] Longitude:", longitude);
-
-        findNearestPoliceStation(latitude, longitude);
-      },
-      function (error) {
-        navigationTriggered = false; // Allow retry on failure
-        if (status) status.innerText = "❌ Unable to get your location.";
-        console.error("[LOCATION ERROR]", error);
-        speakText("I need your location permission to find the nearest police station.");
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
-    );
-  }
-
-  // =====================================
-  // GET LOCATION (Manual "Location" command)
-  // =====================================
-
-  function getLocation() {
-    if (!navigator.geolocation) {
-      if (status) status.innerText = "❌ Location is not supported by this browser.";
-      speakText("Location is not supported by this browser.");
-      return;
-    }
-
-    if (status) status.innerText = "📍 Getting your exact location...";
-
-    navigator.geolocation.getCurrentPosition(
-      async function (position) {
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-
-        currentLatitude = latitude;
-        currentLongitude = longitude;
-
-        try {
-          const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&addressdetails=1`
-          );
-
-          if (!response.ok) {
-            throw new Error("Address lookup failed");
-          }
-
-          const data = await response.json();
-          const address = data.display_name;
-
-          locationFound = true;
-
-          if (status) status.innerText = "📍 Location detected!";
-          if (heard) heard.innerHTML = "📍 <strong>Your location:</strong><br>" + address;
-
-          speakText("Your current location is " + address);
-
-          console.log("Latitude:", latitude);
-          console.log("Longitude:", longitude);
-          console.log("Address:", address);
-
-          const mapsURL = `https://www.google.com/maps?q=${latitude},${longitude}`;
-          window.externalTab = window.open(mapsURL, "_blank");
-        } catch (error) {
-          locationFound = false;
-          if (status) status.innerText = "❌ Could not find your address.";
-          console.log("Address error:", error);
-          speakText("I could not find your address.");
-        }
-      },
-      function (error) {
-        locationFound = false;
-        if (status) status.innerText = "❌ Unable to get your location.";
-        console.log("Location error:", error.message);
-        speakText("I was unable to get your location.");
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
-    );
-  }
-
-  // =====================================
-  // FIND NEAREST POLICE STATION
-  // =====================================
-
-  async function findNearestPoliceStation(latitude, longitude) {
-    console.log("[8] SEARCHING POLICE STATIONS");
-    if (status) status.innerText = "👮 Finding nearest police station...";
-
-    let mapsUrl = "";
-
-    try {
-      const radius = 5000;
-      const query = `
-        [out:json];
-        (
-          node["amenity"="police"](around:${radius},${latitude},${longitude});
-          way["amenity"="police"](around:${radius},${latitude},${longitude});
-          relation["amenity"="police"](around:${radius},${latitude},${longitude});
-        );
-        out center;
-      `;
-
-      const response = await fetch(
-        "https://overpass-api.de/api/interpreter",
-        {
-          method: "POST",
-          body: query,
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Police station search HTTP error: " + response.status);
-      }
-
-      const data = await response.json();
-      console.log("[POLICE] Search results:", data.elements ? data.elements.length : 0);
-
-      let nearestStation = null;
-      let shortestDistance = Infinity;
-
-      if (data.elements && data.elements.length > 0) {
-        console.log("[9] POLICE STATION FOUND");
-
-        data.elements.forEach(function (station) {
-          let stationLat;
-          let stationLon;
-
-          if (station.type === "node") {
-            stationLat = station.lat;
-            stationLon = station.lon;
-          } else if (station.center) {
-            stationLat = station.center.lat;
-            stationLon = station.center.lon;
-          }
-
-          if (stationLat === undefined || stationLon === undefined) return;
-
-          const distance = calculateDistance(latitude, longitude, stationLat, stationLon);
-
-          if (distance < shortestDistance) {
-            shortestDistance = distance;
-            nearestStation = {
-              latitude: stationLat,
-              longitude: stationLon,
-              name: station.tags?.name || "Nearest Police Station",
-            };
-          }
-        });
-      }
-
-      if (nearestStation) {
-        console.log("[10] NEAREST POLICE STATION SELECTED", nearestStation);
-
-        let distanceText = shortestDistance < 1
-          ? Math.round(shortestDistance * 1000) + " meters"
-          : shortestDistance.toFixed(2) + " kilometers";
-
-        if (status) status.innerText = "👮 Nearest Police Station Found";
-        if (heard) {
-          heard.innerHTML +=
-            "<br><br>" +
-            "🚨 <strong>Nearest Police Station:</strong><br>" +
-            "👮 " + nearestStation.name + "<br>" +
-            "📏 " + distanceText;
-        }
-
-        mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${nearestStation.latitude},${nearestStation.longitude}`;
-      } else {
-        console.log("[POLICE] No specific station found via API, falling back to Google Maps search");
-        mapsUrl = `https://www.google.com/maps/search/police+station/@${latitude},${longitude},14z`;
-      }
-    } catch (error) {
-      console.error("[POLICE ERROR]", error);
-      mapsUrl = `https://www.google.com/maps/search/police+station/@${latitude},${longitude},14z`;
-    }
-
-    console.log("[11] GOOGLE MAPS URL CREATED");
-    console.log("[NAVIGATION] Google Maps URL:", mapsUrl);
-
-    console.log("[12] OPENING GOOGLE MAPS");
-
-    // Open Google Maps
-    const newTab = window.open(mapsUrl, "_blank");
-    if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
-      console.log("[NAVIGATION] Popup blocked, using window.location.assign");
-      window.location.assign(mapsUrl);
-    }
-  }
-
-  // =====================================
-  // DISTANCE CALCULATOR
-  // =====================================
-
-  function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  // =====================================
-  // TEXT TO SPEECH — RIME API + FALLBACK
-  // =====================================
-
-  let currentAudio = null;
-  let ttsRequestId = 0;
-
-  function speakTextFallback(text) {
-    const speech = new SpeechSynthesisUtterance();
-    speech.text = text;
-    speech.lang = "en-IN";
-    speech.rate = 0.9;
-    speech.pitch = 1;
-
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(speech);
-  }
-
-  async function speakWithRime(text) {
-    ttsRequestId++;
-    const currentRequestId = ttsRequestId;
-
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio.currentTime = 0;
-      currentAudio = null;
-    }
-
     window.speechSynthesis.cancel();
 
     try {
       const response = await fetch("/api/tts", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text: text }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
       });
 
-      if (!response.ok) {
-        throw new Error("Rime API returned " + response.status);
-      }
+      if (!response.ok) throw new Error("Rime API Error");
 
-      const audioBlob = await response.blob();
+      const blob = await response.blob();
+      if (!blob || blob.size === 0) throw new Error("Empty audio");
 
-      if (!audioBlob || audioBlob.size === 0) {
-        throw new Error("Rime returned empty audio");
-      }
-
-      const audioUrl = URL.createObjectURL(audioBlob);
+      const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
 
-      if (currentRequestId !== ttsRequestId) {
-        URL.revokeObjectURL(audioUrl);
-        return;
-      }
+      if (reqId !== this.requestId) return;
+      this.currentAudio = audio;
 
-      currentAudio = audio;
-
-      audio.onended = function () {
-        URL.revokeObjectURL(audioUrl);
-        if (currentAudio === audio) {
-          currentAudio = null;
-        }
-      };
-
-      audio.onerror = function () {
-        URL.revokeObjectURL(audioUrl);
-        if (currentAudio === audio) {
-          currentAudio = null;
-        }
-        console.log("Audio playback failed, using fallback.");
-        speakTextFallback(text);
-      };
-
-      await audio.play();
-    } catch (error) {
-      console.log("Rime TTS error:", error.message, "— using fallback.");
-      speakTextFallback(text);
+      await new Promise((resolve) => {
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          resolve();
+        };
+        audio.onerror = async () => {
+          URL.revokeObjectURL(audioUrl);
+          console.warn("[TTS] Audio play failed. Using fallback.");
+          await this.fallback(text);
+          resolve();
+        };
+        audio.play().catch(async (err) => {
+          console.warn("[TTS] Audio play promise failed:", err);
+          await this.fallback(text);
+          resolve();
+        });
+      });
+    } catch (err) {
+      console.warn("[TTS] Rime failed:", err.message, "Using fallback.");
+      await this.fallback(text);
     }
   }
+};
 
-  function speakText(text) {
-    speakWithRime(text);
-  }
+// =====================================
+// BACKEND API SERVICE
+// =====================================
+const BackendAPI = {
+  getBaseUrl() {
+    if (window.location.protocol === 'file:') {
+      return 'http://localhost:3000';
+    }
+    return '';
+  },
 
-  // =====================================
-  // SPEECH ERROR & AUTO-RESTART
-  // =====================================
-
-  recognition.onerror = function (event) {
-    console.log("Speech recognition error:", event.error);
-  };
-
-  recognition.onend = function () {
-    console.log("[3] LISTENING");
+  async getAssistance(transcript, location) {
+    console.log("[BackendAPI] → /api/v1/assist:", transcript);
     try {
-      recognition.start();
+      const response = await fetch(`${this.getBaseUrl()}/api/v1/assist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript,
+          location: location.lat ? { lat: location.lat, lng: location.lng } : null
+        })
+      });
+      if (!response.ok) throw new Error("Assist API returned " + response.status);
+      const data = await response.json();
+      console.log("[BackendAPI] Response:", data.responseText);
+      return data.responseText;
     } catch (error) {
-      console.log("Recognition restart error:", error);
+      console.error("[BackendAPI] Error:", error);
+      return null;
+    }
+  }
+};
+
+// =====================================
+// LOCATION & MAPS SERVICES
+// =====================================
+const LocationService = {
+  async getCurrentLocation() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) return reject(new Error("No geolocation support"));
+
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          AppState.location.lat = pos.coords.latitude;
+          AppState.location.lng = pos.coords.longitude;
+          resolve(pos.coords);
+        },
+        err => reject(err),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+  },
+
+  async handleLocationCommand() {
+    if (UI.status) UI.status.innerText = "📍 Getting your location...";
+    try {
+      const coords = await this.getCurrentLocation();
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${coords.latitude}&lon=${coords.longitude}&addressdetails=1`);
+      const data = await response.json();
+
+      if (UI.status) UI.status.innerText = "📍 Location detected!";
+      if (UI.heard) UI.heard.innerHTML = `📍 <strong>Your location:</strong><br>${data.display_name}`;
+
+      TTS.speak("Your current location is " + data.display_name);
+
+      const mapsURL = `https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`;
+      window.open(mapsURL, "_blank");
+    } catch (error) {
+      if (UI.status) UI.status.innerText = "❌ Unable to get location.";
+      TTS.speak("I was unable to get your location.");
+    }
+  },
+
+  async handleDoctorCommand() {
+    if (UI.status) UI.status.innerText = "🏥 Finding nearest hospital...";
+    TTS.speak("Finding the nearest hospital.");
+
+    try {
+      const coords = await this.getCurrentLocation();
+      const mapsURL = `https://www.google.com/maps/search/hospital+near+me/@${coords.latitude},${coords.longitude},14z`;
+      window.open(mapsURL, "_blank");
+    } catch (error) {
+      if (UI.status) UI.status.innerText = "❌ Please enable location permission.";
+      TTS.speak("I couldn't access your location.");
+    }
+  },
+
+  async handlePoliceCommand() {
+    if (UI.status) UI.status.innerText = "🚨 Accessing location for police station...";
+    TTS.speak("Finding the nearest police station.");
+
+    try {
+      const coords = await this.getCurrentLocation();
+      const mapsUrl = `https://www.google.com/maps/search/police+station/@${coords.latitude},${coords.longitude},14z`;
+      window.open(mapsUrl, "_blank");
+    } catch (error) {
+      TTS.speak("I need your location permission to find the nearest police station.");
+    }
+  }
+};
+
+// =====================================
+// SILENCE-BASED PHRASE PIPELINE
+// Collects interim words. After 1 second of
+// no new speech input, fires the Qdrant assist
+// endpoint with the buffered phrase.
+// =====================================
+const PhrasePipeline = {
+  buffer: "",           // Accumulated transcript text
+  silenceTimer: null,   // Timeout handle for silence detection
+  SILENCE_MS: 1000,     // 1 second of silence triggers processing
+  MIN_WORDS: 2,         // Minimum word count before triggering
+
+  /** Feed new partial/final transcript text into the buffer. */
+  feed(text) {
+    const cleaned = text.trim();
+    if (!cleaned) return;
+    this.buffer = cleaned;   // Always use the latest full transcript snapshot
+    this._resetTimer();
+  },
+
+  /** Reset the 1-second silence countdown. */
+  _resetTimer() {
+    if (this.silenceTimer) clearTimeout(this.silenceTimer);
+    this.silenceTimer = setTimeout(() => this._flush(), this.SILENCE_MS);
+  },
+
+  /** Flush the buffer to the command processor after silence. */
+  async _flush() {
+    const phrase = this.buffer.trim();
+    this.buffer = "";
+    this.silenceTimer = null;
+
+    if (!phrase) return;
+
+    const wordCount = phrase.split(/\s+/).filter(Boolean).length;
+    if (wordCount < this.MIN_WORDS) {
+      console.log("[PhrasePipeline] Phrase too short, skipping:", phrase);
+      return;
+    }
+
+    if (AppState.isProcessing) {
+      console.log("[PhrasePipeline] Already processing, queued phrase dropped:", phrase);
+      return;
+    }
+
+    console.log("[PhrasePipeline] 🔥 1s silence — flushing phrase to pipeline:", phrase);
+    await processCommand(phrase);
+  },
+
+  /** Immediately cancel any pending timer (used by instant triggers). */
+  cancel() {
+    if (this.silenceTimer) clearTimeout(this.silenceTimer);
+    this.silenceTimer = null;
+    this.buffer = "";
+  }
+};
+
+// =====================================
+// CENTRAL COMMAND PROCESSOR
+// All speech flows through here.
+// Critical triggers fire instantly; everything
+// else reaches the Qdrant semantic backend.
+// =====================================
+async function processCommand(transcript) {
+  if (!transcript) return;
+
+  if (UI.heard) UI.heard.innerText = "Heard: " + transcript;
+
+  const command = transcript.toLowerCase().trim().replace(/[.,!?]/g, "");
+  const isContactPage = window.location.pathname.endsWith("contact.html");
+
+  // =====================================
+  // PHASE 1: CRITICAL TRIGGERS (instant)
+  // =====================================
+
+  // -> ACTIVATE SAFETY MODE
+  if ((command.includes("baby") || command === "baby") && !AppState.safetyMode) {
+    PhrasePipeline.cancel();
+    AppState.safetyMode = true;
+    AppState.resetWorkflows();
+    if (UI.status) UI.status.innerText = "🚨 SAFETY MODE ACTIVATED";
+    document.body.style.backgroundColor = "#ffe5e5";
+    TTS.speak("Safety mode is on. I'm listening.");
+    return;
+  }
+
+  // -> DEACTIVATE SAFETY MODE
+  const isSafe = (
+    command === "safe" ||
+    command.includes("i am safe") ||
+    command.includes("main safe hoon") ||
+    command.includes("ab safe hoon")
+  );
+  const isUnsafe = (
+    command.includes("nahi") ||
+    command.includes("nhi") ||
+    command.includes("not safe") ||
+    command.includes("nahin")
+  );
+
+  if (isSafe && !isUnsafe) {
+    PhrasePipeline.cancel();
+    AppState.safetyMode = false;
+    AppState.resetWorkflows();
+    document.body.style.backgroundColor = "#f5f5f5";
+    if (UI.status) UI.status.innerText = "🎙️ Listening for 'Baby'...";
+    if (UI.heard) UI.heard.innerText = "";
+    TTS.speak("Okay, going back to Safe Sakhi.");
+    setTimeout(() => window.location.href = "safesakhi.html", 500);
+    return;
+  }
+
+  // -> EXPLICIT UNSAFE / POLICE TRIGGER
+  if (AppState.safetyMode && isUnsafe && !AppState.activeWorkflows.navigation) {
+    PhrasePipeline.cancel();
+    AppState.activeWorkflows.navigation = true;
+    LocationService.handlePoliceCommand();
+    return;
+  }
+
+  // -> HELP TRIGGER
+  if (
+    (command.includes("help") || command === "help me") &&
+    AppState.safetyMode &&
+    !isContactPage &&
+    !AppState.activeWorkflows.help
+  ) {
+    PhrasePipeline.cancel();
+    AppState.activeWorkflows.help = true;
+    if (UI.status) UI.status.innerText = "🚨 HELP DETECTED — Opening emergency contacts...";
+    TTS.speak("Opening your emergency contacts.");
+    window.open("contact.html", "_blank");
+    return;
+  }
+
+  // =====================================
+  // PHASE 2: ACTION TRIGGERS
+  // =====================================
+
+  if (command.includes("location") && !AppState.activeWorkflows.location) {
+    PhrasePipeline.cancel();
+    AppState.activeWorkflows.location = true;
+    LocationService.handleLocationCommand();
+    return;
+  }
+
+  const doctorKeywords = ["doctor", "hospital", "medical emergency", "ambulance"];
+  if (doctorKeywords.some(kw => command.includes(kw)) && !AppState.activeWorkflows.doctor) {
+    PhrasePipeline.cancel();
+    AppState.activeWorkflows.doctor = true;
+    LocationService.handleDoctorCommand();
+    return;
+  }
+
+  if (command.includes("go home") || command.includes("go home") || command === "home") {
+    if (!AppState.activeWorkflows.back) {
+      PhrasePipeline.cancel();
+      AppState.activeWorkflows.back = true;
+      TTS.speak("Returning to Safe Sakhi.");
+      AppState.safetyMode = false;
+      setTimeout(() => window.location.href = "safesakhi.html", 800);
+    }
+    return;
+  }
+
+  // =====================================
+  // KEYWORD FIREWALL — Phase 2.5
+  // Hard-coded trigger words must NEVER reach Qdrant,
+  // even when their action conditions weren't met
+  // (e.g. "help" outside safety mode, "location" after
+  // workflow already fired, "nahi" when safetyMode=false).
+  // =====================================
+  const HARDCODED_KEYWORDS = [
+    "baby", "help", "safe",
+    "nahi", "nhi", "nahin", "not safe",
+    "i am safe", "main safe hoon", "ab safe hoon",
+    "location", "doctor", "hospital", "medical emergency", "ambulance", "back", "go home", "police"
+  ];
+  if (HARDCODED_KEYWORDS.some(kw => command.includes(kw))) {
+    console.log("[PIPELINE] Hardcoded keyword — blocked from Qdrant:", transcript);
+    // Reset the workflow flag so the same command can fire again next time
+    AppState.resetWorkflows();
+    return;
+  }
+
+  // =====================================
+  // PHASE 3: SEMANTIC QDRANT + GEMINI BACKEND
+  // /api/v1/assist handles Qdrant search and
+  // Gemini refinement internally — returns
+  // the final spoken response directly.
+  // =====================================
+
+  AppState.isProcessing = true;
+  if (UI.status) UI.status.innerText = "🔍 Searching knowledge base...";
+  console.log("[PIPELINE] → /api/v1/assist:", transcript);
+
+  try {
+    const response = await BackendAPI.getAssistance(transcript, AppState.location);
+
+    const finalText = response || "Stay calm. Move to a safe, well-lit public area and call for help.";
+
+    if (UI.status) UI.status.innerText = "🤖 " + finalText;
+    if (UI.heard) UI.heard.innerText = "Last response: " + finalText;
+    await TTS.speak(finalText);
+
+  } catch (err) {
+    console.error("[PIPELINE] Phase 3 error:", err);
+  } finally {
+    AppState.isProcessing = false;
+    // Mic restarts — response stays on screen until next word
+    try { recognition.start(); } catch (e) { }
+  }
+}
+
+// =====================================
+// VOICE PIPELINE
+// =====================================
+const SpeechRecognitionEngine = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (!SpeechRecognitionEngine) {
+  if (UI.status) UI.status.innerText = "❌ Speech recognition is not supported.";
+} else {
+  const recognition = new SpeechRecognitionEngine();
+  recognition.continuous = true;
+  recognition.interimResults = true;   // Capture partial results for real-time buffer
+  recognition.lang = "en-IN";
+
+  recognition.onstart = () => {
+    if (UI.status && !AppState.safetyMode) {
+      UI.status.innerText = "🎙️ Listening...";
     }
   };
 
-  // =====================================
-  // START AUTOMATICALLY
-  // =====================================
+  recognition.onresult = (event) => {
+    // ✅ Drop all events while Qdrant fetch / TTS is running.
+    // This prevents mic bleed from the speaker re-triggering the pipeline.
+    if (AppState.isProcessing) return;
 
+    // Build the full transcript from the current event batch
+    let interimTranscript = "";
+    let finalTranscript = "";
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const text = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        finalTranscript += text;
+      } else {
+        interimTranscript += text;
+      }
+    }
+
+    const latestText = (finalTranscript || interimTranscript).trim();
+    if (!latestText) return;
+
+    // ✅ User spoke — clear last AI response and show what we heard
+    if (UI.heard) UI.heard.innerText = "Heard: " + latestText;
+    if (UI.status) {
+      UI.status.innerText = AppState.safetyMode
+        ? "🚨 SAFETY MODE — Listening..."
+        : "🎙️ Listening...";
+    }
+
+    // ----------------------------------------------------------
+    // INSTANT CRITICAL-TRIGGER CHECK
+    // For safety-critical keywords, act immediately without
+    // waiting for the 1-second silence buffer to expire.
+    // ----------------------------------------------------------
+    const cmdQuick = latestText.toLowerCase().trim().replace(/[.,!?]/g, "");
+    const isInstantTrigger =
+      cmdQuick.includes("baby") ||
+      cmdQuick.includes("help") ||
+      cmdQuick === "safe" ||
+      cmdQuick.includes("i am safe") ||
+      cmdQuick.includes("not safe") ||
+      cmdQuick.includes("nahi") ||
+      cmdQuick.includes("nhi") ||
+      cmdQuick === "back" ||
+      cmdQuick.includes("go back") ||
+      cmdQuick === "home" ||
+      cmdQuick.includes("go home");
+
+    if (isInstantTrigger) {
+      PhrasePipeline.cancel();
+      processCommand(latestText);
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // SILENCE-BASED PIPELINE
+    // Feed interim text into the buffer. After 1 second of no
+    // new speech, the accumulated phrase is sent to Qdrant.
+    // ----------------------------------------------------------
+    PhrasePipeline.feed(latestText);
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error === 'no-speech') return; // Ignore 'no-speech' to prevent console spam
+    console.warn("[Speech] Error:", e.error);
+  };
+
+  recognition.onend = () => {
+    // Auto-restart only when NOT mid-processing.
+    // Phase 3's finally{} block handles the restart after TTS ends.
+    if (!AppState.isProcessing) {
+      try { recognition.start(); } catch (e) { }
+    }
+  };
+
+  // Start automatically
   recognition.start();
 }
