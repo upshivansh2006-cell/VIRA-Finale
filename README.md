@@ -34,7 +34,7 @@ To set up and replicate this project on your local machine, follow these steps:
 
 1. **Clone the repository**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/upshivansh2006-cell/VIRA-Finale
    cd VIRA
    ```
 
