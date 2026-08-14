@@ -19,6 +19,7 @@ VIRA contributes a novel integration of browser-based continuous speech recognit
 
 > **Demo:** https://drive.google.com/file/d/1xhxP2ifcK_A39g3xGHJTB69JHmA5JLFS/view?usp=drivesdk
 
+> **Working Link:** https://vira-finale.onrender.com
 ---
 
 ## 3️⃣ Reproducibility (How to Run)
@@ -82,7 +83,6 @@ To ensure VIRA responds effectively during an emergency, we optimized for latenc
 - **TTS Generation Latency (Rime):** `~300-500ms`. Chosen to evaluate the delay between the user's distress call and the system's vocal response. Rime provides highly realistic, low-latency voices ("Eva") to calm the user.
 - **Speech Recognition Responsiveness:** Instantaneous trigger word detection ("Baby" or "Help") using the browser-native Web Speech API. Chosen to guarantee zero-latency activation without relying on server round-trips.
 
-*(Note: These metrics are indicative based on our architecture. Please update with your specific hackathon benchmark results if needed.)*
 
 ---
 
