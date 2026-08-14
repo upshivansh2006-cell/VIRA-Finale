@@ -27,7 +27,7 @@ To set up and replicate this project on your local machine, follow these steps:
 
 ### Prerequisites
 - Python 3.9+
-- [Qdrant](https://qdrant.tech/) running locally.
+- Qdrant Cloud Cluster URL and API Key
 - Rime Labs API Key (for TTS).
 
 ### Setup Instructions
@@ -56,17 +56,12 @@ To set up and replicate this project on your local machine, follow these steps:
    Create a `.env` file in the root directory and add your keys:
    ```env
    RIME_API_KEY=your_rime_api_key_here
+   QDRANT_URL=your_qdrant_cloud_url
+   QDRANT_API_KEY=your_qdrant_api_key
    # Add any other required keys (e.g., Pathway/Weya if utilized in your fork)
    ```
 
-5. **Start Qdrant Vector Database**
-   Run the local Qdrant instance from the `qdrant/` directory:
-   ```bash
-   .\qdrant\qdrant.exe
-   ```
-   *(Ensure it runs on `localhost:6333`)*
-
-6. **Run the Application**
+5. **Run the Application**
    Start the FastAPI server:
    ```bash
    python main.py
@@ -74,7 +69,7 @@ To set up and replicate this project on your local machine, follow these steps:
    uvicorn main:app --port 3000 --reload
    ```
 
-7. **Access the App**
+6. **Access the App**
    Open `http://localhost:3000` in your web browser. Grant microphone permissions when prompted.
 
 ---
@@ -83,7 +78,7 @@ To set up and replicate this project on your local machine, follow these steps:
 
 To ensure VIRA responds effectively during an emergency, we optimized for latency and accuracy. We tracked the following metrics:
 
-- **Vector Search Latency (Qdrant):** `~10-20ms`. Chosen because rapid retrieval of safety protocols is critical. Running Qdrant locally ensures no external network overhead for semantic matching.
+- **Vector Search Latency (Qdrant):** `~50-100ms`. Chosen because rapid retrieval of safety protocols is critical. Qdrant Cloud ensures high availability and fast semantic matching.
 - **TTS Generation Latency (Rime):** `~300-500ms`. Chosen to evaluate the delay between the user's distress call and the system's vocal response. Rime provides highly realistic, low-latency voices ("Eva") to calm the user.
 - **Speech Recognition Responsiveness:** Instantaneous trigger word detection ("Baby" or "Help") using the browser-native Web Speech API. Chosen to guarantee zero-latency activation without relying on server round-trips.
 
